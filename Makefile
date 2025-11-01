@@ -17,15 +17,11 @@ local-up:
 local-down:
 	${LOCAL_DOCKER_COMPOSE} down --volumes
 
-set-env:
 # All in one. for tryout
-	ENV_FILE=./docker/all-in.env
-	include $(ENV_FILE)
-	export VITE_PII_DETECTOR_API_ENDPOINT
-
-all-in-up: set-env
-	@echo "Using VITE_PII_DETECTOR_API_ENDPOINT=$(VITE_PII_DETECTOR_API_ENDPOINT)"
-	$(ALL_IN_DOCKER_COMPOSE) build $(ALL_IN_APP) --no-cache
+all-in-up:
+	@set -a && . ./docker/all-in.env && set +a && \
+	echo "Using VITE_PII_DETECTOR_API_ENDPOINT=$$VITE_PII_DETECTOR_API_ENDPOINT" && \
+	$(ALL_IN_DOCKER_COMPOSE) build $(ALL_IN_APP) --no-cache && \
 	$(ALL_IN_DOCKER_COMPOSE) up $(ALL_IN_APP)
 
 all-in-down:
