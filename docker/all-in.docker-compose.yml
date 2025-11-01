@@ -80,6 +80,7 @@ services:
       - ./all-in.env
     entrypoint: >
       sh -c '
+        LLM_MODEL=$${LLM_MODEL:-gemma3:1b}
         env
         echo "Waiting for pi-detector-all-in-ollama1...";
         until curl -s http://pi-detector-all-in-ollama1:11434; do sleep 2; done;

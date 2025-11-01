@@ -78,6 +78,7 @@ services:
       - ./local.env
     entrypoint: >
       sh -c '
+        LLM_MODEL=$${LLM_MODEL:-gemma3:1b}
         env
         echo "Waiting for local-dev-ollama1...";
         until curl -s http://local-dev-ollama1:11434; do sleep 2; done;
