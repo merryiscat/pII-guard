@@ -1,6 +1,6 @@
+import Axios, { AxiosInstance } from 'axios';
 import { injectable, inject } from 'inversify';
 import llamaTokenizer from 'llama-tokenizer-js';
-import OpenAI from 'openai';
 
 import { ConfigsModule } from '../../configs';
 import { LoggerModule } from '../../logger';
@@ -11,17 +11,23 @@ const MAX_TOKEN_COUNT = 2048;
 @injectable()
 export class OpenAIClientAdapter implements LlmClient {
   private static llmClient: OpenAIClientAdapter | null = null;
-  private readonly openai: OpenAI;
+  private readonly api: AxiosInstance;
 
   constructor(
     @inject(ConfigsModule.CONFIGS) private readonly configs: ConfigsModule.Configs,
     @inject(LoggerModule.LOGGER) private readonly logger: LoggerModule.Logger
   ) {
-    this.openai = new OpenAI({
-      apiKey: this.configs.get('LLM_API_KEY'),
+    this.api = Axios.create({
+      baseURL: this.configs.get('LLM_API_URL'),
+      timeout: 300000,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': this.configs.get('LLM_API_KEY'),
+      },
     });
     this.logger.info({
       message: 'OpenAI Client initialized',
+      baseURL: this.configs.get('LLM_API_URL'),
     });
   }
 
@@ -34,41 +40,86 @@ export class OpenAIClientAdapter implements LlmClient {
 
   ask: LlmClient['ask'] = async (prompt: string) => {
     this.logger.info({
-      message: 'Asking OpenAI LLM',
+      message: 'Asking LuxiaCloud LLM',
     });
     this.logger.debug({
-      message: 'Prompt being sent to OpenAI',
+      message: 'Prompt being sent to LuxiaCloud',
       prompt,
     });
 
     try {
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o', // or 'gpt-3.5-turbo'
+      const response = await this.api.post('/chat/completions/gpt-4o-mini/create', {
+        model: 'llm',
         messages: [
           { role: 'system', content: 'You are a GDPR compliance assistant.' },
           { role: 'user', content: prompt },
         ],
         temperature: 0,
-        response_format: {
-          type: 'json_object',
-        },
+        stream: false,
       });
+
       this.logger.debug({
-        message: 'Response received from OpenAI',
-        response,
+        message: 'Response received from LuxiaCloud',
+        response: response.data,
       });
-      if (!response.choices || response.choices.length === 0) {
+
+      const { data } = response;
+
+      if (!data.choices || data.choices.length === 0) {
         return new LlmClientError(undefined, 'Invalid response from LLM');
       }
-      const content = response.choices[0]?.message.content;
+
+      const content = data.choices[0]?.message?.content;
       if (!content) {
         return new LlmClientError(undefined, 'No content in LLM response');
       }
-      return JSON.parse(content);
+
+      // Parse JSON from response
+      const parseResult = this.parseResponse(content);
+      if (LoggerModule.isError(parseResult)) {
+        return new LlmClientError(undefined, 'Failed to parse LLM response', parseResult);
+      }
+
+      return parseResult;
+    } catch (errorRaw) {
+      this.logger.debug({
+        message: 'LuxiaCloud API Error Details',
+        error: (errorRaw as any).response?.data,
+        status: (errorRaw as any).response?.status,
+      });
+      return new LlmClientError(
+        {
+          status: (errorRaw as any).response?.status,
+          data: (errorRaw as any).response?.data,
+        },
+        'Unable to ask the LLM',
+        LoggerModule.convertToError(errorRaw)
+      );
+    }
+  };
+
+  private parseResponse = (response: string) => {
+    const start = response.indexOf('[');
+    const end = response.lastIndexOf(']');
+
+    if (start === -1 || end === -1 || end <= start) {
+      return new LlmClientError(
+        {
+          response,
+        },
+        'No valid JSON array found.'
+      );
+    }
+    const raw = response.slice(start, end + 1);
+
+    try {
+      return JSON.parse(raw);
     } catch (errorRaw) {
       return new LlmClientError(
-        undefined,
-        'Unable to ask the LLM',
+        {
+          raw: raw,
+        },
+        'Failed to parse extracted JSON array.',
         LoggerModule.convertToError(errorRaw)
       );
     }
