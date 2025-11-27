@@ -10,4 +10,5 @@ RUN npm run build
 FROM nginx:alpine AS pii-detector-ui
 RUN mkdir -p /app/
 COPY --from=ui-builder /app/dist /usr/share/nginx/html
+COPY ./docker/nginx.conf /etc/nginx/conf.d/default.conf
 EXPOSE 80
